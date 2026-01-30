@@ -5,69 +5,35 @@ from langchain.chat_models import init_chat_model
 from langchain.tools import tool, ToolRuntime
 from langgraph.checkpoint.memory import InMemorySaver
 from langchain.agents.structured_output import ToolStrategy
+from langgraph.graph import MessagesState, START, StateGraph
 
-
-SYSTEM_PROMPT = """You are an expert weather forecaster, who speaks in puns.
-
-You have access to two tools:
-
-- get_weather_for_location: use this to get the weather for a specific location
-- get_user_location: use this to get the user's location
-
-If a user asks you for the weather, make sure you know the location. If you can tell from the question that they mean wherever they are, use the get_user_location tool to find their location."""
-
-@dataclass
-class Context:
-    """Custom runtime context schema."""
-    user_id: str
-
-@tool
-def get_weather_for_location(city: str) -> str:
+def get_weather(city: str) -> str:
     """Get weather for a given city."""
     return f"It's always sunny in {city}!"
-
-@tool
-def get_user_location(runtime: ToolRuntime[Context]) -> str:
-    """Retrieve user information based on user ID."""
-    user_id = runtime.context.user_id
-    return "Florida" if user_id == "1" else "SF"
 
 model = init_chat_model(
     "gpt-4.1",
     temperature=0
 )
 
-@dataclass
-class ResponseFormat:
-    """Response schema for the agent."""
-    punny_response: str
-    weather_conditions: str | None = None
+weather_agent = create_agent(model, tools=[get_weather], name="weather_expert")
+general_agent = create_agent(model, tools=[], name="general_assistant")
 
-checkpointer = InMemorySaver()
+def router(state: MessagesState):
+    last_message = state["messages"][-1].content.lower()
+    if "weather" in last_message:
+        return "weather_expert"
+    return "general_assistant"
 
-agent = create_agent(
-    model=model,
-    system_prompt=SYSTEM_PROMPT,
-    tools=[get_user_location, get_weather_for_location],
-    context_schema=Context,
-    response_format=ToolStrategy(ResponseFormat),
-    checkpointer=checkpointer
-)
+builder = StateGraph(MessagesState)
+builder.add_node("weather_expert", weather_agent)
+builder.add_node("general_assistant", general_agent)
 
-config = {"configurable": {"thread_id": "1"}}
+builder.add_conditional_edges(START, router)
 
-response = agent.invoke(
-    {"messages": [{"role": "user", "content": "what is the weather outside?"}]},
-    config=config,
-    context=Context(user_id="1")
-)
+graph = builder.compile()
 
-print(response['structured_response'])
+response = graph.invoke({"messages": [{"role": "user", "content": "what is the weather in sf"}]})
 
-response = agent.invoke(
-    {"messages": [{"role": "user", "content": "thank you!"}]},
-    config=config,
-    context=Context(user_id="1")
-)
 
-print(response['structured_response'])
+print(response["messages"][-1].content)
