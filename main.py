@@ -76,11 +76,6 @@ builder.add_edge("supervisor", END)
 
 graph = builder.compile()
 
-flight_prompt = "what is the flight number for the flight from cmb to sf this weekend",
-hotel_prompt = "what is the hotel name for the budget hotel in sf",
-itinerary_prompt = "what is the itinerary for the trip to sf",
-general_prompt = "what is the latest iPhone version",
-
 response = graph.invoke({"messages": [
     {"role": "user", "content": "what is the flight number for the flight from cmb to sf this weekend"},
     {"role": "system", "content": "your an helpful assistant, but you dont ask for preferences and try to come up with the most convinent option to fill the gaps"}
